@@ -4,7 +4,9 @@ import org.ejml.data.DMatrixRMaj;
 import org.ejml.dense.row.CommonOps_DDRM;
 import us.ihmc.euclid.tools.EuclidCoreRandomTools;
 import us.ihmc.robotics.linearAlgebra.careSolvers.CARESolver;
+import us.ihmc.robotics.linearAlgebra.careSolvers.DefectCorrectionCARESolver;
 import us.ihmc.robotics.linearAlgebra.careSolvers.EigenvectorCARESolver;
+import us.ihmc.robotics.linearAlgebra.careSolvers.SignFunctionCARESolver;
 import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
 import us.ihmc.simulationconstructionset.util.RobotController;
 import us.ihmc.yoVariables.registry.YoRegistry;
@@ -27,23 +29,24 @@ public class CartPoleLQRController implements RobotController
       cartJoint = robot.getSCSCartJoint();
       poleJoint = robot.getSCSPoleJoint();
 
-      CARESolver careSolver = new EigenvectorCARESolver();
+      CARESolver careSolver = new DefectCorrectionCARESolver(new SignFunctionCARESolver());
       DMatrixRMaj Q = new DMatrixRMaj(4, 4);
       DMatrixRMaj R = new DMatrixRMaj(1, 1);
 
       Q.set(0, 0, 0.0);
       Q.set(1, 1, 1.0);
-      Q.set(2, 2, 1.0);
+      Q.set(2, 2, 10.0);
       Q.set(3, 3, 1.0);
 
-      R.set(0, 0, 5.0);
+      R.set(0, 0, 0.5);
 
+      System.out.println("A:");
       System.out.println(robot.getA_lin());
-      System.out.println();
+      System.out.println("B:");
       System.out.println(robot.getB_lin());
-      System.out.println();
+      System.out.println("Q:");
       System.out.println(Q);
-      System.out.println();
+      System.out.println("R:");
       System.out.println(R);
 
       careSolver.setMatrices(robot.getA_lin(), robot.getB_lin(), CommonOps_DDRM.identity(4), Q, R);
@@ -62,8 +65,14 @@ public class CartPoleLQRController implements RobotController
       CommonOps_DDRM.mult(BT, P, BTS);
       CommonOps_DDRM.mult(Rinv, BTS, K);
 
-      System.out.println();
+      System.out.println("K:");
       System.out.println(K);
+
+      // Found using python's control package
+      K.set(0, 0, 0.0);
+      K.set(0, 1, 169.0);
+      K.set(0, 2, -4.47);
+      K.set(0, 3, 23.96);
    }
 
    private final Random random = new Random();
@@ -74,7 +83,7 @@ public class CartPoleLQRController implements RobotController
       if (randomPoleAngle.getValue())
       {
          randomPoleAngle.set(false);
-         poleJoint.setQ(Math.PI + EuclidCoreRandomTools.nextDouble(random, 0.1));
+         poleJoint.setQ(Math.PI + EuclidCoreRandomTools.nextDouble(random, 0.2));
       }
 
       DMatrixRMaj x = new DMatrixRMaj(4, 1);
