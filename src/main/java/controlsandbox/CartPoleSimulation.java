@@ -7,9 +7,10 @@ public class CartPoleSimulation
    public CartPoleSimulation()
    {
       CartPoleRobot robot = new CartPoleRobot();
-      robot.getPinJoint().setQd(0.1);
+      robot.getSCSPoleJoint().setQ(Math.PI);
+      robot.getRobot().setController(new CartPoleLQRController(robot));
 
-      SimulationConstructionSet scs = new SimulationConstructionSet(robot);
+      SimulationConstructionSet scs = new SimulationConstructionSet(robot.getRobot());
 
       scs.setSimulateNoFasterThanRealTime(true);
       scs.startOnAThread();
