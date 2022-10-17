@@ -1,12 +1,13 @@
 package controlsandbox;
 
+import controlsandbox.solver.DynamicSystemLinearization;
 import org.ejml.data.DMatrixRMaj;
 import org.ejml.dense.row.CommonOps_DDRM;
+import org.hipparchus.linear.Array2DRowRealMatrix;
+import org.hipparchus.linear.RealMatrix;
+import org.hipparchus.linear.RiccatiEquationSolver;
+import org.hipparchus.linear.RiccatiEquationSolverImpl;
 import us.ihmc.euclid.tools.EuclidCoreRandomTools;
-import us.ihmc.robotics.linearAlgebra.careSolvers.CARESolver;
-import us.ihmc.robotics.linearAlgebra.careSolvers.DefectCorrectionCARESolver;
-import us.ihmc.robotics.linearAlgebra.careSolvers.EigenvectorCARESolver;
-import us.ihmc.robotics.linearAlgebra.careSolvers.SignFunctionCARESolver;
 import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
 import us.ihmc.simulationconstructionset.util.RobotController;
 import us.ihmc.yoVariables.registry.YoRegistry;
@@ -29,50 +30,27 @@ public class CartPoleLQRController implements RobotController
       cartJoint = robot.getSCSCartJoint();
       poleJoint = robot.getSCSPoleJoint();
 
-      CARESolver careSolver = new DefectCorrectionCARESolver(new SignFunctionCARESolver());
-      DMatrixRMaj Q = new DMatrixRMaj(4, 4);
-      DMatrixRMaj R = new DMatrixRMaj(1, 1);
+      DynamicSystemLinearization linearization = new DynamicSystemLinearization(robot);
+      DMatrixRMaj fixedPointQ = new DMatrixRMaj(2, 1);
+      DMatrixRMaj fixedPointQd = new DMatrixRMaj(2, 1);
+      fixedPointQ.set(1, 0, Math.PI);
+      linearization.solve(fixedPointQ, fixedPointQd);
 
-      Q.set(0, 0, 0.0);
-      Q.set(1, 1, 1.0);
-      Q.set(2, 2, 10.0);
-      Q.set(3, 3, 1.0);
+      RealMatrix A = toHipparchus(linearization.getA());
+      RealMatrix B = toHipparchus(linearization.getB());
+      RealMatrix Q = new Array2DRowRealMatrix(4, 4);
+      RealMatrix R = new Array2DRowRealMatrix(1, 1);
 
-      R.set(0, 0, 0.5);
+      Q.setEntry(0, 0, 1.0);
+      Q.setEntry(1, 1, 1.0);
+      Q.setEntry(2, 2, 3.0);
+      Q.setEntry(3, 3, 3.0);
+      R.setEntry(0, 0, 0.75);
 
-      System.out.println("A:");
-      System.out.println(robot.getA_lin());
-      System.out.println("B:");
-      System.out.println(robot.getB_lin());
-      System.out.println("Q:");
-      System.out.println(Q);
-      System.out.println("R:");
-      System.out.println(R);
+      RiccatiEquationSolver solver = new RiccatiEquationSolverImpl(A, B, Q, R);
+      K = toEJML(solver.getK());
 
-      careSolver.setMatrices(robot.getA_lin(), robot.getB_lin(), CommonOps_DDRM.identity(4), Q, R);
-      DMatrixRMaj P = careSolver.computeP();
-
-      System.out.println("P:");
-      System.out.println(P);
-
-      K = new DMatrixRMaj(1, 4);
-      DMatrixRMaj Rinv = new DMatrixRMaj(1, 1);
-      CommonOps_DDRM.invert(R, Rinv);
-      DMatrixRMaj BT = new DMatrixRMaj(1, 4);
-      CommonOps_DDRM.transpose(robot.getB_lin(), BT);
-
-      DMatrixRMaj BTS = new DMatrixRMaj(1, 4);
-      CommonOps_DDRM.mult(BT, P, BTS);
-      CommonOps_DDRM.mult(Rinv, BTS, K);
-
-      System.out.println("K:");
       System.out.println(K);
-
-      // Found using python's control package
-      K.set(0, 0, 0.0);
-      K.set(0, 1, 169.0);
-      K.set(0, 2, -4.47);
-      K.set(0, 3, 23.96);
    }
 
    private final Random random = new Random();
@@ -83,7 +61,7 @@ public class CartPoleLQRController implements RobotController
       if (randomPoleAngle.getValue())
       {
          randomPoleAngle.set(false);
-         poleJoint.setQ(Math.PI + EuclidCoreRandomTools.nextDouble(random, 0.2));
+         poleJoint.setQ(Math.PI + EuclidCoreRandomTools.nextDouble(random, 0.4));
       }
 
       DMatrixRMaj x = new DMatrixRMaj(4, 1);
@@ -108,5 +86,35 @@ public class CartPoleLQRController implements RobotController
    public YoRegistry getYoRegistry()
    {
       return registry;
+   }
+
+   private static RealMatrix toHipparchus(DMatrixRMaj ejmlMatrix)
+   {
+      Array2DRowRealMatrix matrix = new Array2DRowRealMatrix(ejmlMatrix.numRows, ejmlMatrix.numCols);
+
+      for (int i = 0; i < ejmlMatrix.getNumRows(); i++)
+      {
+         for (int j = 0; j < ejmlMatrix.getNumCols(); j++)
+         {
+            matrix.setEntry(i, j, ejmlMatrix.get(i, j));
+         }
+      }
+
+      return matrix;
+   }
+
+   private static DMatrixRMaj toEJML(RealMatrix matrix)
+   {
+      DMatrixRMaj ejmlMatrix = new DMatrixRMaj(matrix.getRowDimension(), matrix.getColumnDimension());
+
+      for (int i = 0; i < ejmlMatrix.getNumRows(); i++)
+      {
+         for (int j = 0; j < ejmlMatrix.getNumCols(); j++)
+         {
+            ejmlMatrix.set(i, j, matrix.getEntry(i, j));
+         }
+      }
+
+      return ejmlMatrix;
    }
 }

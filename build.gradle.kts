@@ -16,6 +16,7 @@ ihmc {
 }
 
 mainDependencies {
-    api("us.ihmc:valkyrie:source")
+   api("us.ihmc:valkyrie:source")
+   api("org.hipparchus:hipparchus-optim:2.3")
 }
 

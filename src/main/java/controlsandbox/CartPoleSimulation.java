@@ -12,6 +12,7 @@ public class CartPoleSimulation
 
       SimulationConstructionSet scs = new SimulationConstructionSet(robot.getRobot());
 
+      scs.setGroundVisible(false);
       scs.setSimulateNoFasterThanRealTime(true);
       scs.startOnAThread();
    }

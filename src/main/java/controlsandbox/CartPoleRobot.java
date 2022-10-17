@@ -1,16 +1,15 @@
 package controlsandbox;
 
+import controlsandbox.solver.DynamicSystem;
 import org.ejml.data.DMatrixRMaj;
 import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.tools.EuclidCoreTools;
 import us.ihmc.euclid.tuple3D.Vector3D;
 import us.ihmc.graphicsDescription.appearance.YoAppearance;
-import us.ihmc.matrixlib.MatrixTools;
-import us.ihmc.robotModels.FullRobotModel;
 import us.ihmc.robotics.robotDescription.*;
 import us.ihmc.simulationconstructionset.*;
 
-public class CartPoleRobot
+public class CartPoleRobot implements DynamicSystem
 {
    public static double CART_MASS = 5.0;
    public static double POLE_MASS = 3.0;
@@ -102,5 +101,67 @@ public class CartPoleRobot
    public DMatrixRMaj getB_lin()
    {
       return B_lin;
+   }
+
+   @Override
+   public DMatrixRMaj computeH(DMatrixRMaj q)
+   {
+      double theta = q.get(1, 0);
+
+      DMatrixRMaj H = new DMatrixRMaj(2, 2);
+
+      H.set(0, 0, POLE_MASS + CART_MASS);
+      H.set(0, 1, POLE_MASS * POLE_COM_OFFSET * Math.cos(theta));
+      H.set(1, 0, POLE_MASS * POLE_COM_OFFSET * Math.cos(theta));
+      H.set(1, 1, POLE_MASS * EuclidCoreTools.square(POLE_COM_OFFSET));
+
+      return H;
+   }
+
+   @Override
+   public DMatrixRMaj computeC(DMatrixRMaj q, DMatrixRMaj qd)
+   {
+      double theta = q.get(1, 0);
+      double thetaDot = qd.get(1, 0);
+
+      DMatrixRMaj C = new DMatrixRMaj(2, 2);
+      C.set(0, 1, - POLE_MASS * POLE_COM_OFFSET * thetaDot * Math.sin(theta));
+
+      return C;
+   }
+
+   @Override
+   public DMatrixRMaj computeG(DMatrixRMaj q)
+   {
+      double theta = q.get(1, 0);
+      DMatrixRMaj G = new DMatrixRMaj(2, 1);
+      G.set(1, 0, POLE_MASS * g * POLE_COM_OFFSET * Math.sin(theta));
+
+      return G;
+   }
+
+   @Override
+   public DMatrixRMaj computeB()
+   {
+      DMatrixRMaj B = new DMatrixRMaj(2, 1);
+      B.set(0, 0, 1.0);
+      return B;
+   }
+
+   @Override
+   public int getPlantDegreesOfFreedom()
+   {
+      return 2;
+   }
+
+   @Override
+   public int getControlDegreesOfFreedom()
+   {
+      return 1;
+   }
+
+   public static void main(String[] args)
+   {
+
    }
 }
