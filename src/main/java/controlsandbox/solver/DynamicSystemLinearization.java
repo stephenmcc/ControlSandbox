@@ -1,6 +1,6 @@
 package controlsandbox.solver;
 
-import controlsandbox.CartPoleRobot;
+import controlsandbox.cartPole.CartPoleRobot;
 import org.ejml.data.DMatrixRMaj;
 import org.ejml.dense.row.CommonOps_DDRM;
 import us.ihmc.matrixlib.MatrixTools;

@@ -1,13 +1,22 @@
-package controlsandbox;
+package controlsandbox.cartPole;
 
 import controlsandbox.solver.DynamicSystem;
 import org.ejml.data.DMatrixRMaj;
 import us.ihmc.euclid.Axis3D;
+import us.ihmc.euclid.referenceFrame.ReferenceFrame;
 import us.ihmc.euclid.tools.EuclidCoreTools;
 import us.ihmc.euclid.tuple3D.Vector3D;
 import us.ihmc.graphicsDescription.appearance.YoAppearance;
+import us.ihmc.mecano.algorithms.CompositeRigidBodyMassMatrixCalculator;
+import us.ihmc.mecano.multiBodySystem.PrismaticJoint;
+import us.ihmc.mecano.multiBodySystem.RevoluteJoint;
+import us.ihmc.mecano.multiBodySystem.RigidBody;
+import us.ihmc.mecano.multiBodySystem.interfaces.MultiBodySystemBasics;
+import us.ihmc.mecano.multiBodySystem.interfaces.RigidBodyBasics;
+import us.ihmc.robotModels.FullRobotModelWrapper;
 import us.ihmc.robotics.robotDescription.*;
-import us.ihmc.simulationconstructionset.*;
+import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
+import us.ihmc.simulationconstructionset.RobotFromDescription;
 
 public class CartPoleRobot implements DynamicSystem
 {
@@ -162,6 +171,32 @@ public class CartPoleRobot implements DynamicSystem
 
    public static void main(String[] args)
    {
+      CartPoleRobot robot = new CartPoleRobot();
 
+      RigidBodyBasics elevator = new RigidBody("elevator", ReferenceFrame.getWorldFrame());
+      for (JointDescription rootJoint : robot.getRobotDescription().getRootJoints())
+      {
+         FullRobotModelWrapper.addJointRecursive(rootJoint, elevator);
+      }
+      MultiBodySystemBasics multiBodySystemBasics = MultiBodySystemBasics.toMultiBodySystemBasics(elevator);
+      PrismaticJoint cart = (PrismaticJoint) multiBodySystemBasics.findJoint(CART_JOINT_NAME);
+      RevoluteJoint pole = (RevoluteJoint) multiBodySystemBasics.findJoint(POLE_JOINT_NAME);
+
+      double q1 = 0.1;
+      double q2 = -1.1;
+
+      DMatrixRMaj q = new DMatrixRMaj(2, 1);
+      q.set(0, 0, q1);
+      q.set(1, 0, q2);
+
+      CompositeRigidBodyMassMatrixCalculator massMatrixCalculator = new CompositeRigidBodyMassMatrixCalculator(multiBodySystemBasics);
+      cart.setQ(q1);
+      pole.setQ(q2);
+      DMatrixRMaj massMatrixMecano = massMatrixCalculator.getMassMatrix();
+
+      DMatrixRMaj Hmanual = robot.computeH(q);
+      System.out.println("H manual:\n" + Hmanual);
+
+      System.out.println("H mecano:\n" + massMatrixMecano);
    }
 }
