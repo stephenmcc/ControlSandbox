@@ -2,13 +2,18 @@ package controlsandbox.acrobot;
 
 import controlsandbox.solver.DynamicSystem;
 import org.ejml.data.DMatrixRMaj;
+import org.ejml.dense.row.CommonOps_DDRM;
 import us.ihmc.avatar.networkProcessor.quadTreeHeightMap.HeightQuadTreeMessageConverter;
 import us.ihmc.commons.MathTools;
 import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.referenceFrame.ReferenceFrame;
 import us.ihmc.euclid.tuple3D.Vector3D;
+import us.ihmc.graphicsDescription.Graphics3DObject;
+import us.ihmc.graphicsDescription.appearance.AppearanceDefinition;
 import us.ihmc.graphicsDescription.appearance.YoAppearance;
+import us.ihmc.humanoidRobotics.footstep.footstepGenerator.overheadPath.CompositeOverheadPath;
 import us.ihmc.mecano.algorithms.CompositeRigidBodyMassMatrixCalculator;
+import us.ihmc.mecano.algorithms.MultiBodyGravityGradientCalculator;
 import us.ihmc.mecano.multiBodySystem.RevoluteJoint;
 import us.ihmc.mecano.multiBodySystem.RigidBody;
 import us.ihmc.mecano.multiBodySystem.interfaces.JointBasics;
@@ -17,8 +22,12 @@ import us.ihmc.mecano.multiBodySystem.interfaces.RigidBodyBasics;
 import us.ihmc.mecano.tools.MecanoTools;
 import us.ihmc.robotModels.FullRobotModelWrapper;
 import us.ihmc.robotics.robotDescription.*;
-import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
-import us.ihmc.simulationconstructionset.RobotFromDescription;
+import us.ihmc.robotics.screwTheory.GravityCoriolisExternalWrenchMatrixCalculator;
+import us.ihmc.simulationconstructionset.*;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 
 public class AcrobotRobot implements DynamicSystem
 {
@@ -76,6 +85,7 @@ public class AcrobotRobot implements DynamicSystem
       elbowJoint.setLink(elbowLink);
 
       robot = new RobotFromDescription(robotDescription);
+//      addIntertialEllipsoidsToVisualizer(robot);
    }
 
    public RobotDescription getRobotDescription()
@@ -137,8 +147,8 @@ public class AcrobotRobot implements DynamicSystem
       double q1 = q.get(0, 0);
       double q2 = q.get(1, 0);
 
-      G.set(0, 0, - SHOULDER_MASS * g * SHOULDER_COM_OFFSET * Math.sin(q1) - ELBOW_MASS * g * (SHOULDER_LENGTH * Math.sin(q1) + ELBOW_COM_OFFSET * Math.sin(q1 + q2)));
-      G.set(1, 0, - ELBOW_MASS * g * ELBOW_COM_OFFSET * Math.sin(q1 + q2));
+      G.set(0, 0, SHOULDER_MASS * g * SHOULDER_COM_OFFSET * Math.sin(q1) + ELBOW_MASS * g * (SHOULDER_LENGTH * Math.sin(q1) + ELBOW_COM_OFFSET * Math.sin(q1 + q2)));
+      G.set(1, 0, ELBOW_MASS * g * ELBOW_COM_OFFSET * Math.sin(q1 + q2));
 
       return G;
    }
@@ -172,25 +182,80 @@ public class AcrobotRobot implements DynamicSystem
       {
          FullRobotModelWrapper.addJointRecursive(rootJoint, elevator);
       }
+
       MultiBodySystemBasics multiBodySystemBasics = MultiBodySystemBasics.toMultiBodySystemBasics(elevator);
       RevoluteJoint shoulder = (RevoluteJoint) multiBodySystemBasics.findJoint(SHOULDER_JOINT_NAME);
       RevoluteJoint elbow = (RevoluteJoint) multiBodySystemBasics.findJoint(ELBOW_JOINT_NAME);
 
       double q1 = 0.4;
       double q2 = -1.1;
+      double qd1 = 0.4;
+      double qd2 = -0.2;
 
       DMatrixRMaj q = new DMatrixRMaj(2, 1);
       q.set(0, 0, q1);
       q.set(1, 0, q2);
+      DMatrixRMaj qd = new DMatrixRMaj(2, 1);
+      qd.set(0, 0, qd1);
+      qd.set(1, 0, qd2);
 
       CompositeRigidBodyMassMatrixCalculator massMatrixCalculator = new CompositeRigidBodyMassMatrixCalculator(multiBodySystemBasics);
+      massMatrixCalculator.setEnableCoriolisMatrixCalculation(true);
       shoulder.setQ(q1);
       elbow.setQ(q2);
+      shoulder.setQd(qd1);
+      elbow.setQd(qd2);
+      elevator.updateFramesRecursively();
+
       DMatrixRMaj massMatrixMecano = massMatrixCalculator.getMassMatrix();
+      DMatrixRMaj Cmecano = massMatrixCalculator.getCoriolisMatrix();
 
       DMatrixRMaj Hmanual = robot.computeH(q);
-      System.out.println("H manual:\n" + Hmanual);
+      DMatrixRMaj Cmanual = robot.computeC(q, qd);
 
+      System.out.println("H manual:\n" + Hmanual);
       System.out.println("H mecano:\n" + massMatrixMecano);
+
+      System.out.println("C manual:\n" + Cmanual);
+      System.out.println("C mecano:\n" + Cmecano);
+
+      DMatrixRMaj CqdMan = new DMatrixRMaj(2, 1);
+      DMatrixRMaj CqdMec = new DMatrixRMaj(2, 1);
+
+      CommonOps_DDRM.mult(Cmanual, qd, CqdMan);
+      CommonOps_DDRM.mult(Cmecano, qd, CqdMec);
+
+      System.out.println("Cqd man:\n" + CqdMan);
+      System.out.println("Cqd mec:\n" + CqdMec);
+
+      GravityCoriolisExternalWrenchMatrixCalculator gravityCalculator = new GravityCoriolisExternalWrenchMatrixCalculator(elevator);
+      gravityCalculator.setGravitionalAcceleration(-g);
+      gravityCalculator.compute();
+
+      DMatrixRMaj Gmec = gravityCalculator.getJointTauMatrix();
+      DMatrixRMaj Gman = robot.computeG(q);
+
+      System.out.println("G man:\n" + Gman);
+      System.out.println("G mec:\n" + Gmec);
+   }
+
+   private void addIntertialEllipsoidsToVisualizer(RobotFromDescription robot)
+   {
+      HashSet<Link> links = new HashSet<>();
+      links.add(robot.getJoint(SHOULDER_JOINT_NAME).getLink());
+      links.add(robot.getJoint(ELBOW_JOINT_NAME).getLink());
+
+      for (Link l : links)
+      {
+         AppearanceDefinition appearance = YoAppearance.Green();
+         appearance.setTransparency(0.6);
+
+         if (l.getLinkGraphics() == null)
+            l.setLinkGraphics(new Graphics3DObject());
+
+         l.addEllipsoidFromMassProperties(appearance);
+         l.addCoordinateSystemToCOM(0.5);
+         //         l.addBoxFromMassProperties(appearance);
+      }
    }
 }
