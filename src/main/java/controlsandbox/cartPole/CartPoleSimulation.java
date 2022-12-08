@@ -1,6 +1,6 @@
 package controlsandbox.cartPole;
 
-import controlsandbox.solver.LQRController;
+import controlsandbox.lqr.LQRController;
 import us.ihmc.simulationconstructionset.SimulationConstructionSet;
 
 public class CartPoleSimulation
@@ -8,7 +8,7 @@ public class CartPoleSimulation
    public CartPoleSimulation()
    {
       CartPoleRobot robot = new CartPoleRobot();
-      robot.getSCSPoleJoint().setQ(Math.PI);
+      robot.getSCSPoleJoint().setQ(Math.PI - 0.03);
       robot.getRobot().setController(LQRController.setupForCartPole(robot));
 
       SimulationConstructionSet scs = new SimulationConstructionSet(robot.getRobot());

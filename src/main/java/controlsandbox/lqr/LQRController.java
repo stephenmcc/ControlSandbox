@@ -1,4 +1,4 @@
-package controlsandbox.solver;
+package controlsandbox.lqr;
 
 import controlsandbox.acrobot.AcrobotRobot;
 import controlsandbox.cartPole.CartPoleRobot;

@@ -1,6 +1,6 @@
 package controlsandbox.cartPole;
 
-import controlsandbox.solver.DynamicSystem;
+import controlsandbox.lqr.DynamicSystem;
 import org.ejml.data.DMatrixRMaj;
 import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.referenceFrame.ReferenceFrame;

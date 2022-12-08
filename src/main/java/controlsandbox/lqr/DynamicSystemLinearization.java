@@ -1,4 +1,4 @@
-package controlsandbox.solver;
+package controlsandbox.lqr;
 
 import controlsandbox.cartPole.CartPoleRobot;
 import org.ejml.data.DMatrixRMaj;

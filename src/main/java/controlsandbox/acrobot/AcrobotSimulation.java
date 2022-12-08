@@ -1,6 +1,6 @@
 package controlsandbox.acrobot;
 
-import controlsandbox.solver.LQRController;
+import controlsandbox.lqr.LQRController;
 import us.ihmc.simulationconstructionset.SimulationConstructionSet;
 
 public class AcrobotSimulation
@@ -8,7 +8,7 @@ public class AcrobotSimulation
    public AcrobotSimulation()
    {
       AcrobotRobot robot = new AcrobotRobot();
-      robot.getShoulderJoint().setQ(Math.PI);
+      robot.getShoulderJoint().setQ(Math.PI - 0.02);
       robot.getRobot().setController(LQRController.setupForAcrobot(robot));
 
       SimulationConstructionSet scs = new SimulationConstructionSet(robot.getRobot());

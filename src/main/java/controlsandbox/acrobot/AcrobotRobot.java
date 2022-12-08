@@ -1,9 +1,8 @@
 package controlsandbox.acrobot;
 
-import controlsandbox.solver.DynamicSystem;
+import controlsandbox.lqr.DynamicSystem;
 import org.ejml.data.DMatrixRMaj;
 import org.ejml.dense.row.CommonOps_DDRM;
-import us.ihmc.avatar.networkProcessor.quadTreeHeightMap.HeightQuadTreeMessageConverter;
 import us.ihmc.commons.MathTools;
 import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.referenceFrame.ReferenceFrame;
@@ -11,23 +10,17 @@ import us.ihmc.euclid.tuple3D.Vector3D;
 import us.ihmc.graphicsDescription.Graphics3DObject;
 import us.ihmc.graphicsDescription.appearance.AppearanceDefinition;
 import us.ihmc.graphicsDescription.appearance.YoAppearance;
-import us.ihmc.humanoidRobotics.footstep.footstepGenerator.overheadPath.CompositeOverheadPath;
 import us.ihmc.mecano.algorithms.CompositeRigidBodyMassMatrixCalculator;
-import us.ihmc.mecano.algorithms.MultiBodyGravityGradientCalculator;
 import us.ihmc.mecano.multiBodySystem.RevoluteJoint;
 import us.ihmc.mecano.multiBodySystem.RigidBody;
-import us.ihmc.mecano.multiBodySystem.interfaces.JointBasics;
 import us.ihmc.mecano.multiBodySystem.interfaces.MultiBodySystemBasics;
 import us.ihmc.mecano.multiBodySystem.interfaces.RigidBodyBasics;
-import us.ihmc.mecano.tools.MecanoTools;
 import us.ihmc.robotModels.FullRobotModelWrapper;
 import us.ihmc.robotics.robotDescription.*;
 import us.ihmc.robotics.screwTheory.GravityCoriolisExternalWrenchMatrixCalculator;
 import us.ihmc.simulationconstructionset.*;
 
-import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 
 public class AcrobotRobot implements DynamicSystem
 {
@@ -58,6 +51,7 @@ public class AcrobotRobot implements DynamicSystem
       shoulderJoint = new PinJointDescription(SHOULDER_JOINT_NAME, new Vector3D(), Axis3D.X);
       elbowJoint = new PinJointDescription(ELBOW_JOINT_NAME, new Vector3D(0.0, 0.0, -SHOULDER_LENGTH), Axis3D.X);
 
+//      shoulderJoint.setDamping(2.0);
       robotDescription.addRootJoint(shoulderJoint);
 
       LinkDescription shoulderLink = new LinkDescription("shoulderLink");
