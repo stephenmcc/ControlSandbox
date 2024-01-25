@@ -7,6 +7,12 @@ import us.ihmc.robotics.robotDescription.LinkDescription;
 import us.ihmc.robotics.robotDescription.LinkGraphicsDescription;
 import us.ihmc.robotics.robotDescription.PinJointDescription;
 import us.ihmc.robotics.robotDescription.RobotDescription;
+import us.ihmc.scs2.definition.robot.MomentOfInertiaDefinition;
+import us.ihmc.scs2.definition.robot.RevoluteJointDefinition;
+import us.ihmc.scs2.definition.robot.RigidBodyDefinition;
+import us.ihmc.scs2.definition.robot.RobotDefinition;
+import us.ihmc.scs2.definition.visual.ColorDefinitions;
+import us.ihmc.scs2.definition.visual.VisualDefinitionFactory;
 import us.ihmc.simulationconstructionset.RobotFromDescription;
 
 public class PendulumRobot
@@ -19,27 +25,30 @@ public class PendulumRobot
 
    public static final String JOINT_NAME = "pendulum";
 
-   private final RobotDescription robotDescription;
-   private final PinJointDescription joint;
+   private final RobotDefinition robotDefinition;
+   private final RigidBodyDefinition rootBodyDefinition;
+   private final RevoluteJointDefinition joint;
    private final RobotFromDescription robot;
 
    public PendulumRobot()
    {
-      robotDescription = new RobotDescription("Pendulum");
-      joint = new PinJointDescription(JOINT_NAME, new Vector3D(), Axis3D.X);
-      robotDescription.addRootJoint(joint);
+      robotDefinition = new RobotDefinition("Pendulum");
+      rootBodyDefinition = new RigidBodyDefinition("root");
+      joint = new RevoluteJointDefinition(JOINT_NAME, new Vector3D(), Axis3D.X);
+      robotDefinition.setRootBodyDefinition(rootBodyDefinition);
+      rootBodyDefinition.addChildJoint(joint);
 
-      LinkDescription shoulderLink = new LinkDescription("link");
-      shoulderLink.setMass(MASS);
-      shoulderLink.setMomentOfInertia(INERTIA, INERTIA, INERTIA);
-      shoulderLink.setCenterOfMassOffset(0.0, 0.0, -COM_OFFSET);
+      RigidBodyDefinition link = new RigidBodyDefinition("link");
+      link.setMass(MASS);
+      link.setMomentOfInertia(new MomentOfInertiaDefinition(INERTIA, INERTIA, INERTIA));
+      link.setCenterOfMassOffset(0.0, 0.0, -COM_OFFSET);
 
-      LinkGraphicsDescription shoulderGraphics = new LinkGraphicsDescription();
-      shoulderGraphics.translate(0.0, 0.0, -LENGTH);
-      shoulderGraphics.addCylinder(LENGTH, 0.015, YoAppearance.Red());
-      shoulderLink.setLinkGraphics(shoulderGraphics);
+      VisualDefinitionFactory graphics = new VisualDefinitionFactory();
+      graphics.appendTranslation(0.0, 0.0, -0.5 * LENGTH);
+      graphics.addCylinder(LENGTH, 0.015, ColorDefinitions.Blue());
+      link.addVisualDefinitions(graphics.getVisualDefinitions());
 
-      robot = new RobotFromDescription(robotDescription);
+      robot = new RobotFromDescription(robotDefinition);
    }
 
    public RobotFromDescription getRobot()

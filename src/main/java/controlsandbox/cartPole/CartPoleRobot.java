@@ -6,17 +6,17 @@ import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.referenceFrame.ReferenceFrame;
 import us.ihmc.euclid.tools.EuclidCoreTools;
 import us.ihmc.euclid.tuple3D.Vector3D;
-import us.ihmc.graphicsDescription.appearance.YoAppearance;
 import us.ihmc.mecano.algorithms.CompositeRigidBodyMassMatrixCalculator;
 import us.ihmc.mecano.multiBodySystem.PrismaticJoint;
 import us.ihmc.mecano.multiBodySystem.RevoluteJoint;
-import us.ihmc.mecano.multiBodySystem.RigidBody;
 import us.ihmc.mecano.multiBodySystem.interfaces.MultiBodySystemBasics;
 import us.ihmc.mecano.multiBodySystem.interfaces.RigidBodyBasics;
-import us.ihmc.robotModels.FullRobotModelWrapper;
-import us.ihmc.robotics.robotDescription.*;
-import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
-import us.ihmc.simulationconstructionset.RobotFromDescription;
+import us.ihmc.scs2.definition.robot.*;
+import us.ihmc.scs2.definition.visual.ColorDefinitions;
+import us.ihmc.scs2.definition.visual.VisualDefinitionFactory;
+import us.ihmc.scs2.simulation.SimulationSession;
+import us.ihmc.scs2.simulation.robot.Robot;
+import us.ihmc.scs2.simulation.robot.multiBodySystem.interfaces.SimOneDoFJointBasics;
 
 public class CartPoleRobot implements DynamicSystem
 {
@@ -28,46 +28,49 @@ public class CartPoleRobot implements DynamicSystem
    public static final String CART_JOINT_NAME = "cartJoint";
    public static final String POLE_JOINT_NAME = "poleJoint";
 
-   private final RobotDescription robotDescription;
-   private final SliderJointDescription sliderJoint;
-   private final PinJointDescription pinJoint;
+   private final RobotDefinition robotDefinition;
+   private final RigidBodyDefinition rootBodyDefinition;
+   private final PrismaticJointDefinition cartJoint;
+   private final RevoluteJointDefinition poleJoint;
 
-   private final RobotFromDescription robot;
+   private final Robot robot;
 
    private final DMatrixRMaj A_lin;
    private final DMatrixRMaj B_lin;
 
    public CartPoleRobot()
    {
-      robotDescription = new RobotDescription("CartPole");
-      sliderJoint = new SliderJointDescription(CART_JOINT_NAME, new Vector3D(), Axis3D.X);
-      pinJoint = new PinJointDescription(POLE_JOINT_NAME, new Vector3D(), Axis3D.Y.negated());
-      robotDescription.addRootJoint(sliderJoint);
+      robotDefinition = new RobotDefinition("CartPole");
+      rootBodyDefinition = new RigidBodyDefinition("root");
+      cartJoint = new PrismaticJointDefinition(CART_JOINT_NAME, new Vector3D(), Axis3D.X);
+      poleJoint = new RevoluteJointDefinition(POLE_JOINT_NAME, new Vector3D(), Axis3D.Y.negated());
 
-      LinkDescription cartLink = new LinkDescription("cartLink");
+      RigidBodyDefinition cartLink = new RigidBodyDefinition("cartLink");
       cartLink.setMass(CART_MASS);
-      cartLink.setMomentOfInertia(0.5, 0.5, 0.5);
-      cartLink.getCenterOfMassOffset(new Vector3D());
+      cartLink.setMomentOfInertia(new MomentOfInertiaDefinition(0.5, 0.5, 0.5));
+      cartLink.setCenterOfMassOffset(0.0, 0.0, 0.0);
 
-      LinkDescription poleLink = new LinkDescription("poleLink");
+      RigidBodyDefinition poleLink = new RigidBodyDefinition("poleLink");
       poleLink.setMass(POLE_MASS);
-      poleLink.setMomentOfInertia(0.2, 1.0, 0.2);
-      poleLink.setCenterOfMassOffset(new Vector3D(0.0, 0.0, -POLE_COM_OFFSET));
+      poleLink.setMomentOfInertia(new MomentOfInertiaDefinition(0.2, 1.0, 0.2));
+      poleLink.setCenterOfMassOffset(0.0, 0.0, -POLE_COM_OFFSET);
 
-      LinkGraphicsDescription cartGraphics = new LinkGraphicsDescription();
-      cartGraphics.addCube(0.1, 0.1, 0.1, true, YoAppearance.Black());
-      cartLink.setLinkGraphics(cartGraphics);
+      VisualDefinitionFactory cartGraphics = new VisualDefinitionFactory();
+      cartGraphics.addBox(0.1, 0.1, 0.1, ColorDefinitions.Black());
+      cartLink.addVisualDefinitions(cartGraphics.getVisualDefinitions());
 
-      LinkGraphicsDescription poleGraphics = new LinkGraphicsDescription();
-      poleGraphics.translate(0.0, 0.0, -2.0 * POLE_COM_OFFSET);
-      poleGraphics.addCylinder(POLE_COM_OFFSET * 2, 0.01, YoAppearance.Red());
-      poleLink.setLinkGraphics(poleGraphics);
+      VisualDefinitionFactory poleGraphics = new VisualDefinitionFactory();
+      poleGraphics.appendTranslation(0.0, 0.0, - POLE_COM_OFFSET);
+      poleGraphics.addCylinder(POLE_COM_OFFSET * 2, 0.01, ColorDefinitions.Red());
+      poleLink.addVisualDefinitions(poleGraphics.getVisualDefinitions());
 
-      sliderJoint.setLink(cartLink);
-      sliderJoint.addJoint(pinJoint);
-      pinJoint.setLink(poleLink);
+      robotDefinition.setRootBodyDefinition(rootBodyDefinition);
+      rootBodyDefinition.addChildJoint(cartJoint);
+      cartJoint.setSuccessor(cartLink);
+      cartLink.addChildJoint(poleJoint);
+      poleJoint.setSuccessor(poleLink);
 
-      robot = new RobotFromDescription(robotDescription);
+      robot = new Robot(robotDefinition, SimulationSession.DEFAULT_INERTIAL_FRAME);
 
       // from https://ocw.mit.edu/courses/6-832-underactuated-robotics-spring-2009/72bc06c4dc73315bf49c28a81dc2b996_MIT6_832s09_read_ch03.pdf
       A_lin = new DMatrixRMaj(4, 4);
@@ -82,25 +85,16 @@ public class CartPoleRobot implements DynamicSystem
       B_lin.set(3, 0, 1.0 / (CART_MASS * POLE_COM_OFFSET));
    }
 
-   public RobotDescription getRobotDescription()
+   public RobotDefinition getRobotDefinition()
    {
-      return robotDescription;
+      return robotDefinition;
    }
 
-   public RobotFromDescription getRobot()
+   public Robot getRobot()
    {
       return robot;
    }
 
-   public OneDegreeOfFreedomJoint getSCSCartJoint()
-   {
-      return (OneDegreeOfFreedomJoint) robot.getJoint(CART_JOINT_NAME);
-   }
-
-   public OneDegreeOfFreedomJoint getSCSPoleJoint()
-   {
-      return (OneDegreeOfFreedomJoint) robot.getJoint(POLE_JOINT_NAME);
-   }
 
    public DMatrixRMaj getA_lin()
    {
@@ -110,6 +104,11 @@ public class CartPoleRobot implements DynamicSystem
    public DMatrixRMaj getB_lin()
    {
       return B_lin;
+   }
+
+   public SimOneDoFJointBasics getPoleJoint()
+   {
+      return (SimOneDoFJointBasics) robot.getJoint(POLE_JOINT_NAME);
    }
 
    @Override
@@ -173,11 +172,8 @@ public class CartPoleRobot implements DynamicSystem
    {
       CartPoleRobot robot = new CartPoleRobot();
 
-      RigidBodyBasics elevator = new RigidBody("elevator", ReferenceFrame.getWorldFrame());
-      for (JointDescription rootJoint : robot.getRobotDescription().getRootJoints())
-      {
-         FullRobotModelWrapper.addJointRecursive(rootJoint, elevator);
-      }
+      RigidBodyBasics elevator = robot.getRobotDefinition().newInstance(ReferenceFrame.getWorldFrame());
+
       MultiBodySystemBasics multiBodySystemBasics = MultiBodySystemBasics.toMultiBodySystemBasics(elevator);
       PrismaticJoint cart = (PrismaticJoint) multiBodySystemBasics.findJoint(CART_JOINT_NAME);
       RevoluteJoint pole = (RevoluteJoint) multiBodySystemBasics.findJoint(POLE_JOINT_NAME);

@@ -7,20 +7,20 @@ import us.ihmc.commons.MathTools;
 import us.ihmc.euclid.Axis3D;
 import us.ihmc.euclid.referenceFrame.ReferenceFrame;
 import us.ihmc.euclid.tuple3D.Vector3D;
-import us.ihmc.graphicsDescription.Graphics3DObject;
-import us.ihmc.graphicsDescription.appearance.AppearanceDefinition;
-import us.ihmc.graphicsDescription.appearance.YoAppearance;
 import us.ihmc.mecano.algorithms.CompositeRigidBodyMassMatrixCalculator;
 import us.ihmc.mecano.multiBodySystem.RevoluteJoint;
-import us.ihmc.mecano.multiBodySystem.RigidBody;
 import us.ihmc.mecano.multiBodySystem.interfaces.MultiBodySystemBasics;
 import us.ihmc.mecano.multiBodySystem.interfaces.RigidBodyBasics;
-import us.ihmc.robotModels.FullRobotModelWrapper;
-import us.ihmc.robotics.robotDescription.*;
 import us.ihmc.robotics.screwTheory.GravityCoriolisExternalWrenchMatrixCalculator;
-import us.ihmc.simulationconstructionset.*;
-
-import java.util.HashSet;
+import us.ihmc.scs2.definition.robot.MomentOfInertiaDefinition;
+import us.ihmc.scs2.definition.robot.RevoluteJointDefinition;
+import us.ihmc.scs2.definition.robot.RigidBodyDefinition;
+import us.ihmc.scs2.definition.robot.RobotDefinition;
+import us.ihmc.scs2.definition.visual.ColorDefinitions;
+import us.ihmc.scs2.definition.visual.VisualDefinitionFactory;
+import us.ihmc.scs2.simulation.SimulationSession;
+import us.ihmc.scs2.simulation.robot.Robot;
+import us.ihmc.scs2.simulation.robot.multiBodySystem.interfaces.SimOneDoFJointBasics;
 
 public class AcrobotRobot implements DynamicSystem
 {
@@ -39,67 +39,69 @@ public class AcrobotRobot implements DynamicSystem
    public static final String SHOULDER_JOINT_NAME = "shoulder";
    public static final String ELBOW_JOINT_NAME = "elbow";
 
-   private final RobotDescription robotDescription;
-   private final PinJointDescription shoulderJoint;
-   private final PinJointDescription elbowJoint;
+   private final RobotDefinition robotDefinition;
+   private final RigidBodyDefinition rootBodyDefinition;
+   private final RevoluteJointDefinition shoulderJoint;
+   private final RevoluteJointDefinition elbowJoint;
 
-   private final RobotFromDescription robot;
+   private final Robot robot;
 
    public AcrobotRobot()
    {
-      robotDescription = new RobotDescription("Acrobot");
-      shoulderJoint = new PinJointDescription(SHOULDER_JOINT_NAME, new Vector3D(), Axis3D.X);
-      elbowJoint = new PinJointDescription(ELBOW_JOINT_NAME, new Vector3D(0.0, 0.0, -SHOULDER_LENGTH), Axis3D.X);
+      robotDefinition = new RobotDefinition("Acrobot");
+      rootBodyDefinition = new RigidBodyDefinition("root");
+      shoulderJoint = new RevoluteJointDefinition(SHOULDER_JOINT_NAME, new Vector3D(), Axis3D.X);
+      elbowJoint = new RevoluteJointDefinition(ELBOW_JOINT_NAME, new Vector3D(0.0, 0.0, -SHOULDER_LENGTH), Axis3D.X);
 
-//      shoulderJoint.setDamping(2.0);
-      robotDescription.addRootJoint(shoulderJoint);
+      robotDefinition.setRootBodyDefinition(rootBodyDefinition);
 
-      LinkDescription shoulderLink = new LinkDescription("shoulderLink");
+      RigidBodyDefinition shoulderLink = new RigidBodyDefinition("shoulderLink");
       shoulderLink.setMass(SHOULDER_MASS);
-      shoulderLink.setMomentOfInertia(SHOULDER_INERTIA, SHOULDER_INERTIA, SHOULDER_INERTIA);
+      shoulderLink.setMomentOfInertia(new MomentOfInertiaDefinition(SHOULDER_INERTIA, SHOULDER_INERTIA, SHOULDER_INERTIA));
       shoulderLink.setCenterOfMassOffset(0.0, 0.0, -SHOULDER_COM_OFFSET);
 
-      LinkDescription elbowLink = new LinkDescription("elbowLink");
+      RigidBodyDefinition elbowLink = new RigidBodyDefinition("elbowLink");
       elbowLink.setMass(ELBOW_MASS);
-      elbowLink.setMomentOfInertia(ELBOW_INERTIA, ELBOW_INERTIA, ELBOW_INERTIA);
+      elbowLink.setMomentOfInertia(new MomentOfInertiaDefinition(ELBOW_INERTIA, ELBOW_INERTIA, ELBOW_INERTIA));
       elbowLink.setCenterOfMassOffset(0.0, 0.0, -ELBOW_COM_OFFSET);
 
-      LinkGraphicsDescription shoulderGraphics = new LinkGraphicsDescription();
-      shoulderGraphics.translate(0.0, 0.0, -SHOULDER_LENGTH);
-      shoulderGraphics.addCylinder(SHOULDER_LENGTH, 0.015, YoAppearance.Red());
-      shoulderLink.setLinkGraphics(shoulderGraphics);
+      VisualDefinitionFactory shoulderGraphics = new VisualDefinitionFactory();
+      shoulderGraphics.appendTranslation(0.0, 0.0, -0.5 * SHOULDER_LENGTH);
+      shoulderGraphics.addCylinder(SHOULDER_LENGTH, 0.015, ColorDefinitions.Red());
+      shoulderLink.addVisualDefinitions(shoulderGraphics.getVisualDefinitions());
 
-      LinkGraphicsDescription elbowGraphics = new LinkGraphicsDescription();
-      elbowGraphics.translate(0.0, 0.0, -ELBOW_LENGTH);
-      elbowGraphics.addCylinder(ELBOW_LENGTH, 0.015, YoAppearance.Blue());
-      elbowLink.setLinkGraphics(elbowGraphics);
+      VisualDefinitionFactory elbowGraphics = new VisualDefinitionFactory();
+      elbowGraphics.appendTranslation(0.0, 0.0, -0.5 * ELBOW_LENGTH);
+      elbowGraphics.addCylinder(ELBOW_LENGTH, 0.015, ColorDefinitions.Blue());
+      elbowLink.addVisualDefinitions(elbowGraphics.getVisualDefinitions());
 
-      shoulderJoint.setLink(shoulderLink);
-      shoulderJoint.addJoint(elbowJoint);
-      elbowJoint.setLink(elbowLink);
+      rootBodyDefinition.addChildJoint(shoulderJoint);
+      shoulderJoint.setSuccessor(shoulderLink);
+      shoulderLink.addChildJoint(elbowJoint);
+      elbowJoint.setSuccessor(elbowLink);
 
-      robot = new RobotFromDescription(robotDescription);
+      robot = new Robot(robotDefinition, SimulationSession.DEFAULT_INERTIAL_FRAME);
 //      addIntertialEllipsoidsToVisualizer(robot);
    }
 
-   public RobotDescription getRobotDescription()
+   public RobotDefinition getRobotDefinition()
    {
-      return robotDescription;
+      return robotDefinition;
    }
 
-   public RobotFromDescription getRobot()
+   public Robot getRobot()
    {
       return robot;
    }
 
-   public OneDegreeOfFreedomJoint getShoulderJoint()
+   public SimOneDoFJointBasics getShoulderJoint()
    {
-      return (OneDegreeOfFreedomJoint) robot.getJoint(SHOULDER_JOINT_NAME);
+      return (SimOneDoFJointBasics) robot.getJoint(SHOULDER_JOINT_NAME);
    }
 
-   public OneDegreeOfFreedomJoint getElbowJoint()
+   public SimOneDoFJointBasics getElbowJoint()
    {
-      return (OneDegreeOfFreedomJoint) robot.getJoint(ELBOW_JOINT_NAME);
+      return (SimOneDoFJointBasics) robot.getJoint(ELBOW_JOINT_NAME);
    }
 
    @Override
@@ -170,12 +172,7 @@ public class AcrobotRobot implements DynamicSystem
    public static void main(String[] args)
    {
       AcrobotRobot robot = new AcrobotRobot();
-
-      RigidBodyBasics elevator = new RigidBody("elevator", ReferenceFrame.getWorldFrame());
-      for (JointDescription rootJoint : robot.getRobotDescription().getRootJoints())
-      {
-         FullRobotModelWrapper.addJointRecursive(rootJoint, elevator);
-      }
+      RigidBodyBasics elevator = robot.getRobotDefinition().newInstance(ReferenceFrame.getWorldFrame());
 
       MultiBodySystemBasics multiBodySystemBasics = MultiBodySystemBasics.toMultiBodySystemBasics(elevator);
       RevoluteJoint shoulder = (RevoluteJoint) multiBodySystemBasics.findJoint(SHOULDER_JOINT_NAME);
@@ -231,25 +228,5 @@ public class AcrobotRobot implements DynamicSystem
 
       System.out.println("G man:\n" + Gman);
       System.out.println("G mec:\n" + Gmec);
-   }
-
-   private void addIntertialEllipsoidsToVisualizer(RobotFromDescription robot)
-   {
-      HashSet<Link> links = new HashSet<>();
-      links.add(robot.getJoint(SHOULDER_JOINT_NAME).getLink());
-      links.add(robot.getJoint(ELBOW_JOINT_NAME).getLink());
-
-      for (Link l : links)
-      {
-         AppearanceDefinition appearance = YoAppearance.Green();
-         appearance.setTransparency(0.6);
-
-         if (l.getLinkGraphics() == null)
-            l.setLinkGraphics(new Graphics3DObject());
-
-         l.addEllipsoidFromMassProperties(appearance);
-         l.addCoordinateSystemToCOM(0.5);
-         //         l.addBoxFromMassProperties(appearance);
-      }
    }
 }

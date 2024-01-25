@@ -9,40 +9,74 @@ import org.hipparchus.linear.RealMatrix;
 import org.hipparchus.linear.RiccatiEquationSolver;
 import org.hipparchus.linear.RiccatiEquationSolverImpl;
 import us.ihmc.euclid.tools.EuclidCoreRandomTools;
-import us.ihmc.simulationconstructionset.OneDegreeOfFreedomJoint;
-import us.ihmc.simulationconstructionset.util.RobotController;
+import us.ihmc.mecano.multiBodySystem.interfaces.JointReadOnly;
+import us.ihmc.mecano.multiBodySystem.interfaces.OneDoFJointReadOnly;
+import us.ihmc.scs2.definition.controller.ControllerInput;
+import us.ihmc.scs2.definition.controller.ControllerOutput;
+import us.ihmc.scs2.definition.controller.interfaces.Controller;
+import us.ihmc.scs2.definition.controller.interfaces.ControllerDefinition;
+import us.ihmc.scs2.definition.state.interfaces.OneDoFJointStateBasics;
+import us.ihmc.scs2.simulation.robot.multiBodySystem.interfaces.SimOneDoFJointBasics;
 import us.ihmc.yoVariables.registry.YoRegistry;
 import us.ihmc.yoVariables.variable.YoBoolean;
 
 import java.util.Random;
-import java.util.function.Consumer;
 
-public class LQRController implements RobotController
+import static controlsandbox.acrobot.AcrobotRobot.ELBOW_JOINT_NAME;
+import static controlsandbox.acrobot.AcrobotRobot.SHOULDER_JOINT_NAME;
+import static controlsandbox.cartPole.CartPoleRobot.CART_JOINT_NAME;
+import static controlsandbox.cartPole.CartPoleRobot.POLE_JOINT_NAME;
+
+public class LQRController implements Controller
 {
    private final YoRegistry registry = new YoRegistry(getClass().getSimpleName());
    private final DMatrixRMaj K;
 
    private final DynamicSystem dynamicSystem;
    private final DMatrixRMaj fixedPoint;
-   private final OneDegreeOfFreedomJoint[] controllableJoints;
-   private final OneDegreeOfFreedomJoint[] allJoints;
+
+   private final ControllerInput controllerInput;
+   private final ControllerOutput controllerOutput;
+   private final OneDoFJointReadOnly[] allJoints;
+   private final OneDoFJointReadOnly[] controllableJoints;
+
+   private final OneDoFJointStateBasics[] allJointOutput;
+   private final OneDoFJointStateBasics[] controllableJointOutput;
 
    private final YoBoolean perturb = new YoBoolean("perturb", registry);
    private final Random random = new Random();
-   private Consumer<Random> perturbRunnable = r -> {};
 
    public LQRController(DynamicSystem dynamicSystem,
                         DMatrixRMaj fixedPoint,
                         double positionCost,
                         double velocityCost,
                         double controlCost,
-                        OneDegreeOfFreedomJoint[] controllableJoints,
-                        OneDegreeOfFreedomJoint[] allJoints)
+                        String[] controllableJoints,
+                        String[] allJoints,
+                        ControllerInput controllerInput,
+                        ControllerOutput controllerOutput)
    {
       this.dynamicSystem = dynamicSystem;
-      this.controllableJoints = controllableJoints;
-      this.allJoints = allJoints;
       this.fixedPoint = fixedPoint;
+
+      this.controllableJoints = new OneDoFJointReadOnly[controllableJoints.length];
+      this.controllableJointOutput = new OneDoFJointStateBasics[allJoints.length];
+      for (int i = 0; i < controllableJoints.length; i++)
+      {
+         this.controllableJoints[i] = (OneDoFJointReadOnly) controllerOutput.getInput().findJoint(controllableJoints[i]);
+         this.controllableJointOutput[i] = (OneDoFJointStateBasics) controllerOutput.getJointOutput(controllableJoints[i]);
+      }
+
+      this.allJoints = new OneDoFJointReadOnly[allJoints.length];
+      this.allJointOutput = new OneDoFJointStateBasics[allJoints.length];
+      for (int i = 0; i < allJoints.length; i++)
+      {
+         this.allJoints[i] = (OneDoFJointReadOnly) controllerOutput.getInput().findJoint(allJoints[i]);
+         this.allJointOutput[i] = (OneDoFJointStateBasics) controllerOutput.getJointOutput(allJoints[i]);
+      }
+
+      this.controllerInput = controllerInput;
+      this.controllerOutput = controllerOutput;
 
       DynamicSystemLinearization linearization = new DynamicSystemLinearization(dynamicSystem);
       DMatrixRMaj fixedPointQd = new DMatrixRMaj(dynamicSystem.getPlantDegreesOfFreedom(), 1);
@@ -56,7 +90,7 @@ public class LQRController implements RobotController
       for (int i = 0; i < dynamicSystem.getPlantDegreesOfFreedom(); i++)
       {
          Q.setEntry(i, i, positionCost);
-         Q.setEntry(i + dynamicSystem.getPlantDegreesOfFreedom(), i + dynamicSystem.getPlantDegreesOfFreedom(), velocityCost);
+         Q.setEntry(i + dynamicSystem.getPlantDegreesOfFreedom(), i + dynamicSystem.getPlantDegreesOfFreedom(),  velocityCost);
       }
 
       for (int i = 0; i < dynamicSystem.getControlDegreesOfFreedom(); i++)
@@ -73,8 +107,26 @@ public class LQRController implements RobotController
    {
       if (perturb.getValue())
       {
-         perturb.set(false);
-         perturbRunnable.accept(random);
+         perturb.set(false, false);
+
+         double deltaQMax = 0.02;
+         double deltaQdMax = 0.05;
+
+         for (JointReadOnly joint : controllerInput.getInput().getAllJoints())
+         {
+            if (joint instanceof SimOneDoFJointBasics oneDoFJoint)
+            {
+               double q = oneDoFJoint.getQ();
+               double qd = oneDoFJoint.getQd();
+               oneDoFJoint.setQ(q + EuclidCoreRandomTools.nextDouble(random, deltaQMax));
+               oneDoFJoint.setQd(qd + EuclidCoreRandomTools.nextDouble(random, deltaQdMax));
+            }
+         }
+      }
+
+      for (int i = 0; i < allJointOutput.length; i++)
+      {
+         allJointOutput[i].setEffort(0.0);
       }
 
       int plantDoFs = dynamicSystem.getPlantDegreesOfFreedom();
@@ -82,7 +134,7 @@ public class LQRController implements RobotController
       for (int i = 0; i < plantDoFs; i++)
       {
          x.set(i, 0, allJoints[i].getQ() - fixedPoint.get(i, 0));
-         x.set(i + plantDoFs, 0, allJoints[i].getQD());
+         x.set(i + plantDoFs, 0, allJoints[i].getQd());
       }
 
       DMatrixRMaj u = new DMatrixRMaj(dynamicSystem.getControlDegreesOfFreedom(), 1);
@@ -90,7 +142,7 @@ public class LQRController implements RobotController
 
       for (int i = 0; i < controllableJoints.length; i++)
       {
-         controllableJoints[i].setTau(- u.get(i, 0));
+         controllableJointOutput[i].setEffort(- u.get(i, 0));
       }
    }
 
@@ -104,11 +156,6 @@ public class LQRController implements RobotController
    public YoRegistry getYoRegistry()
    {
       return registry;
-   }
-
-   public void setPerturbRunnable(Consumer<Random> perturbRunnable)
-   {
-      this.perturbRunnable = perturbRunnable;
    }
 
    private static RealMatrix toHipparchus(DMatrixRMaj ejmlMatrix)
@@ -141,29 +188,45 @@ public class LQRController implements RobotController
       return ejmlMatrix;
    }
 
-   public static RobotController setupForCartPole(CartPoleRobot cartPoleRobot)
+   public static ControllerDefinition createLQRControllerDefinition(DynamicSystem dynamicSystem,
+                                                                    DMatrixRMaj fixedPoint,
+                                                                    double positionCost,
+                                                                    double velocityCost,
+                                                                    double controlCost,
+                                                                    String[] controllableJoints,
+                                                                    String[] allJoints)
    {
-      DMatrixRMaj fixedPoint = new DMatrixRMaj(2, 1);
-      fixedPoint.set(1, 0, Math.PI);
-      OneDegreeOfFreedomJoint[] controllableJoints = {cartPoleRobot.getSCSCartJoint()};
-      OneDegreeOfFreedomJoint[] allJoints = {cartPoleRobot.getSCSCartJoint(), cartPoleRobot.getSCSPoleJoint()};
-
-      LQRController controller = new LQRController(cartPoleRobot, fixedPoint, 1.0, 3.0, 0.75, controllableJoints, allJoints);
-      controller.setPerturbRunnable(random -> cartPoleRobot.getSCSPoleJoint().setQ(Math.PI + EuclidCoreRandomTools.nextDouble(random, 0.4)));
-
-      return controller;
+      return (input, output) -> new LQRController(dynamicSystem,
+                                                  fixedPoint,
+                                                  positionCost,
+                                                  velocityCost,
+                                                  controlCost,
+                                                  controllableJoints,
+                                                  allJoints,
+                                                  input,
+                                                  output);
    }
 
-   public static RobotController setupForAcrobot(AcrobotRobot acrobotRobot)
+   public static ControllerDefinition setupForCartPole(CartPoleRobot cartPoleRobot)
+   {
+      DMatrixRMaj fixedPoint = new DMatrixRMaj(2, 1);
+      fixedPoint.set(0, 0, 0.0);
+      fixedPoint.set(1, 0, Math.PI);
+
+      String[] controllableJoints = {CART_JOINT_NAME};
+      String[] allJoints = {CART_JOINT_NAME, POLE_JOINT_NAME};
+
+      return createLQRControllerDefinition(cartPoleRobot, fixedPoint, 1.0, 3.0, 0.75, controllableJoints, allJoints);
+   }
+
+   public static ControllerDefinition setupForAcrobot(AcrobotRobot acrobotRobot)
    {
       DMatrixRMaj fixedPoint = new DMatrixRMaj(2, 1);
       fixedPoint.set(0, 0, Math.PI);
-      OneDegreeOfFreedomJoint[] controllableJoints = {acrobotRobot.getElbowJoint()};
-      OneDegreeOfFreedomJoint[] allJoints = {acrobotRobot.getShoulderJoint(), acrobotRobot.getElbowJoint()};
 
-      LQRController controller = new LQRController(acrobotRobot, fixedPoint, 1.0, 3.0, 0.75, controllableJoints, allJoints);
-      controller.setPerturbRunnable(random -> acrobotRobot.getElbowJoint().setQ(EuclidCoreRandomTools.nextDouble(random, 0.2)));
+      String[] controllableJoints = {ELBOW_JOINT_NAME};
+      String[] allJoints = {SHOULDER_JOINT_NAME, ELBOW_JOINT_NAME};
 
-      return controller;
+      return createLQRControllerDefinition(acrobotRobot, fixedPoint, 1.0, 3.0, 0.75, controllableJoints, allJoints);
    }
 }
