@@ -15,9 +15,9 @@ public class LIPMSimulation
    {
       PlaceholderRobot lipm = new PlaceholderRobot();
 
-      SimulationConstructionSet2 scs2 = new SimulationConstructionSet2("AcrobotSimulation", SimulationConstructionSet2.doNothingPhysicsEngine());
+      SimulationConstructionSet2 scs2 = new SimulationConstructionSet2("LIPMSimulation", SimulationConstructionSet2.doNothingPhysicsEngine());
       scs2.addRobot(lipm.getRobot());
-      double dt = 0.0001;
+      double dt = 0.001;
 
       // Setup controller
       ControllerDefinition controllerDefinition = LIPMDynamicsController.createControllerDefinition(dt);
