@@ -1,6 +1,8 @@
 package controlsandbox.rl;
 
 import gnu.trove.list.array.TIntArrayList;
+import us.ihmc.commons.nio.FileTools;
+import us.ihmc.euclid.tools.EuclidCoreRandomTools;
 import us.ihmc.euclid.tools.EuclidCoreTools;
 import us.ihmc.log.LogTools;
 
@@ -8,16 +10,30 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Optional;
 
 import static controlsandbox.rl.TorqueLimitedPendulum.*;
 
 public class TorqueLimitedPendulumValueIteration
 {
+   private static final String directory = System.getProperty("user.home") + File.separator + ".ihmc" + File.separator + "rl" + File.separator;
+   private static final boolean loadFromFile = false;
+   private static final boolean loadFromLatestFile = true;
+
    private static final double goalValue = 0.0;
-   private static final double initialValues = -1.0;
+   private static final double initialGuessTimeToTop = 1.5;
 
    private static final double rewardPerTimeStep = -0.01;
    private double[] values;
@@ -31,10 +47,28 @@ public class TorqueLimitedPendulumValueIteration
 
    public TorqueLimitedPendulumValueIteration()
    {
-      values = new double[TorqueLimitedPendulum.getStateSize()];
-      policy = new int[TorqueLimitedPendulum.getStateSize()];
+      boolean loadedFromFile = false;
 
-      Arrays.fill(values, initialValues);
+      if (loadFromLatestFile)
+      {
+         loadedFromFile = loadFromLatestFile();
+      }
+
+      if (!loadedFromFile)
+      {
+         values = new double[TorqueLimitedPendulum.getStateSize()];
+
+         for (int state_idx = 0; state_idx < values.length; state_idx++)
+         {
+            TorqueLimitedPendulum pendulum = new TorqueLimitedPendulum(state_idx);
+            double delta_q = Math.abs(EuclidCoreTools.angleDifferenceMinusPiToPi(pendulum.getQ(), Math.PI));
+            double timeEstimateSec = initialGuessTimeToTop * (delta_q / Math.PI);
+            int timeEstimateTicks = (int) (timeEstimateSec / TorqueLimitedPendulum.DT);
+            values[state_idx] = timeEstimateTicks * rewardPerTimeStep;
+         }
+      }
+
+      policy = new int[TorqueLimitedPendulum.getStateSize()];
       Arrays.fill(policy, TORQUE_DISCRETIZATION);
 
       rewardHeatMapPanel = new RewardHeatMapPanel(POSITION_DISCRETIZATION, 2 * VELOCITY_DISCRETIZATION + 1);
@@ -42,7 +76,7 @@ public class TorqueLimitedPendulumValueIteration
       torques = new double[2 * TORQUE_DISCRETIZATION + 1];
       for (int i = 0; i < torques.length; i++)
       {
-//         torques[i] = MAX_TORQUE * EuclidCoreTools.square((i - TORQUE_DISCRETIZATION) / (double) TORQUE_DISCRETIZATION);
+         //         torques[i] = MAX_TORQUE * EuclidCoreTools.square((i - TORQUE_DISCRETIZATION) / (double) TORQUE_DISCRETIZATION);
          torques[i] = MAX_TORQUE * ((i - TORQUE_DISCRETIZATION) / (double) TORQUE_DISCRETIZATION);
       }
 
@@ -71,6 +105,10 @@ public class TorqueLimitedPendulumValueIteration
                if (input.toLowerCase().equals("e"))
                {
                   exitRequested = true;
+               }
+               else if (input.toLowerCase().equals("s"))
+               {
+                  saveValues();
                }
 
                try
@@ -155,10 +193,96 @@ public class TorqueLimitedPendulumValueIteration
       }
    }
 
+   private void saveValues()
+   {
+      try
+      {
+         String fileName = directory + new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date()) + "_pendulumValueFunction.txt";
+
+         FileTools.ensureDirectoryExists(new File(directory).toPath());
+
+         File file = new File(fileName);
+         FileTools.ensureFileExists(file.toPath());
+
+         FileWriter fileWriter = new FileWriter(fileName);
+
+         fileWriter.write("POSITION_DISCRETIZATION:" + POSITION_DISCRETIZATION + "\n");
+         fileWriter.write("VELOCITY_DISCRETIZATION:" + VELOCITY_DISCRETIZATION + "\n");
+         fileWriter.write("TORQUE_DISCRETIZATION:" + TORQUE_DISCRETIZATION + "\n");
+         fileWriter.write("MAX_TORQUE:" + MAX_TORQUE + "\n");
+         fileWriter.write("MAX_VELOCITY:" + MAX_VELOCITY + "\n");
+         fileWriter.write("DT:" + DT + "\n");
+
+         fileWriter.write("VALUES:");
+         for (int i = 0; i < values.length; i++)
+         {
+            fileWriter.write(values[i] + ",");
+         }
+         fileWriter.write("\n");
+
+         fileWriter.flush();
+         fileWriter.close();
+         LogTools.info("saved: " + fileName);
+      }
+      catch (Exception e)
+      {
+         e.printStackTrace();
+      }
+   }
+
+   private boolean loadFromLatestFile()
+   {
+      try
+      {
+         Optional<Path> latestFile = Files.list(Paths.get(directory)).sorted().findFirst();
+         if (!latestFile.isPresent())
+         {
+            LogTools.info("no file found");
+            return false;
+         }
+
+         LogTools.info("Loading " + latestFile.get().toFile().getName());
+         load(latestFile.get().toFile());
+         return true;
+      }
+      catch (Exception e)
+      {
+         e.printStackTrace();
+         return false;
+      }
+   }
+
+   private void load(File file)
+   {
+      try
+      {
+         BufferedReader fileReader = new BufferedReader(new FileReader(file));
+         POSITION_DISCRETIZATION = Integer.parseInt(fileReader.readLine().split(":")[1]);
+         VELOCITY_DISCRETIZATION = Integer.parseInt(fileReader.readLine().split(":")[1]);
+         TORQUE_DISCRETIZATION = Integer.parseInt(fileReader.readLine().split(":")[1]);
+         MAX_TORQUE = Double.parseDouble(fileReader.readLine().split(":")[1]);
+         MAX_VELOCITY = Double.parseDouble(fileReader.readLine().split(":")[1]);
+         DT = Double.parseDouble(fileReader.readLine().split(":")[1]);
+         updateGridParameters();
+
+         String[] valuesStrings = fileReader.readLine().split(":")[1].split(",");
+         values = new double[TorqueLimitedPendulum.getStateSize()];
+
+         for (int i = 0; i < valuesStrings.length - 1; i++)
+         {
+            values[i] = Double.parseDouble(valuesStrings[i]);
+         }
+      }
+      catch (Exception e)
+      {
+         e.printStackTrace();
+      }
+   }
+
    private static void showUsage()
    {
-      System.out.println("Type # of value iterations (if empty will do 1), then ENTER");
-      System.out.println("To save policy, type 's' then ENTER");
+      System.out.println("RUN VALUE ITERATION: type # of iterations (if empty will do 1), then ENTER");
+      System.out.println("SAVE: type 's' then ENTER");
    }
 
    private void showDisplay()
@@ -231,7 +355,7 @@ public class TorqueLimitedPendulumValueIteration
             setColorFromState(pendulum, color);
          }
 
-         double previewWindow = 2.5; // sec
+         double previewWindow = 4.0; // sec
          int previewSteps = (int) (previewWindow / DT);
          TorqueLimitedPendulum pendulum = new TorqueLimitedPendulum(0.0, 0.0);
 

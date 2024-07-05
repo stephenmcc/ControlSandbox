@@ -6,22 +6,36 @@ public class TorqueLimitedPendulum
 {
    public static final double Q_GOAL = Math.PI;
    public static final double QD_GOAL = 0.0;
-   public static final double GOAL_Q_EPSILON = Math.toRadians(2.5);
-   public static final double GOAL_QD_EPSILON = Math.toRadians(16.0);
+   public static final double GOAL_Q_EPSILON = Math.toRadians(1.5);
+   public static final double GOAL_QD_EPSILON = Math.toRadians(15.0);
 
-   public static final double DT = 0.004;
    public static final double LENGTH = 1.0;
    public static final double G = 9.81;
    public static final double MASS = 5.0;
-   public static final double MAX_VELOCITY = 6.4;
 
-   public static final double MAX_TORQUE = 0.6 * MASS * G * LENGTH;
-   public static final int TORQUE_DISCRETIZATION = 10;
+   // Configurable parameters
+   public static int POSITION_DISCRETIZATION = 720;
+   public static int VELOCITY_DISCRETIZATION = 500;
+   public static int TORQUE_DISCRETIZATION = 12;
 
-   public static final int POSITION_DISCRETIZATION = 360;
-   public static final double POSITION_GRID_SIZE = 2.0 * Math.PI / POSITION_DISCRETIZATION;
-   public static final int VELOCITY_DISCRETIZATION = 400;
-   public static final double VELOCITY_GRID_SIZE = MAX_VELOCITY / VELOCITY_DISCRETIZATION;
+   public static double MAX_TORQUE = 0.4 * MASS * G * LENGTH;
+   public static double MAX_VELOCITY = 6.4;
+   public static double DT = 0.004;
+
+   // Grid parameters
+   public static double POSITION_GRID_SIZE;
+   public static double VELOCITY_GRID_SIZE;
+
+   public static void updateGridParameters()
+   {
+      POSITION_GRID_SIZE = 2.0 * Math.PI / POSITION_DISCRETIZATION;
+      VELOCITY_GRID_SIZE = MAX_VELOCITY / VELOCITY_DISCRETIZATION;
+   }
+
+   static
+   {
+      updateGridParameters();
+   }
 
    /* Index from 0 -> (POSITION_DISCRETIZATION - 1), where 0 represents angle = 0rad */
    private int q_i;
